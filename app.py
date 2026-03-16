@@ -7,20 +7,38 @@ Each request blocks for 3 seconds while "sending" the notification.
 YOUR TASK: Convert this to use rq for background processing!
 """
 
+from queue import Queue
+
 from flask import Flask, jsonify, request
 import time
 import uuid
 from datetime import datetime
+
+import os
+from dotenv import load_dotenv
+from redis import Redis
+from rq.decorators import job
+
+from tasks import send_notification
+
+load_dotenv()
 
 app = Flask(__name__)
 
 # In-memory store for notifications
 notifications = {}
 
+# Redis connection for RQ
+redis_url = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
+redis_conn = Redis.from_url(redis_url)
 
-def send_notification_sync(notification_id, email, message):
+queue = Queue('notifications', connection=redis_conn)
+
+
+@job('default', connection=redis_conn)
+def send_notification_async(notification_id, email, message):
     """
-    Send a notification (SLOW - blocks for 3 seconds!)
+    Send a notification (ASYNC - runs in background!)
 
     In production, this would call an email service like Mailgun.
     We simulate the slow API with time.sleep().
@@ -75,7 +93,7 @@ def create_notification():
 
     # THIS IS THE PROBLEM: We block here for 3 seconds!
     # The user can't do anything while we wait.
-    result = send_notification_sync(notification_id, email, message)
+    result = send_notification_async(notification_id, email, message)
 
     notification = {
         "id": notification_id,
